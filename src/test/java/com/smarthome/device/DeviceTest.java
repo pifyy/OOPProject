@@ -1,0 +1,1 @@
+package com.smarthome.device;
