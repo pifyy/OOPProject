@@ -35,7 +35,42 @@ injection) and replaced in tests. Later in the project, the config loader will
 use the factory to build the house from the setup file.
 
 ### 2. Command
-_TODO_
+
+**Where:**
+- **Command interface:** `com.smarthome.command.Command`, with `execute()`,
+  `undo()` and `getDescription()`
+- **Concrete commands:** `TurnOnCommand`, `TurnOffCommand`, `LockCommand`,
+  `UnlockCommand` and `SetTemperatureCommand`
+- **Scenes:** `Scene`, which bundles several commands together, like "Goodnight"
+- **Invoker:** `com.smarthome.command.CommandInvoker`, which keeps track of what
+  can be undone
+
+**How:** Every action on a device is its own command object. When a command
+runs, it first remembers what the device looked like (was the light on? was
+the door locked? what was the old temperature?) and then makes the change.
+That way `undo()` can put things back exactly how they were. For example, if
+a light was already on and you run "turn on" and then undo it, the light stays
+on. The commands work with `Switchable`, `Lockable` and `TemperatureAdjustable`
+instead of `Light` or `Lock`, so the same `TurnOffCommand` works on a light or
+a thermostat.
+
+A `Scene` is just a command made of other commands. It runs them in order, and
+when you undo it, it reverses them backwards so the last change gets undone
+first. If something in the middle of a scene fails, it undoes the steps it
+already did, so the house never ends up half-changed.
+
+`CommandInvoker` keeps a stack (`Deque<Command>`) of everything that's been
+run. `run()` executes a command and then adds it to the stack. If the command
+throws an error, like a temperature that's out of range, it never gets added.
+`undo()` takes the most recent command off the stack and undoes it.
+`HomeController` just passes `run()` and `undo()` along to the invoker.
+
+**Why:** It keeps the "what should happen" part separate from the devices
+themselves. Since each action is an object, we can save it, undo it, group it
+into a scene or print what it does. Adding a new action later just means
+writing one new command class, with no changes to the invoker, controller or
+devices. And because a scene is also a command, undoing all of "Goodnight"
+takes one undo.
 
 ### 3. Observer
 
@@ -59,8 +94,26 @@ information. A device can have a logger, a future "save state on change"
 listener and a UI display all subscribed at once, and none of them requires
 changes to the device classes.
 
-### 4. State
-_TODO_
+### 4. State (planned)
+
+**Where:** We plan to use this for the `Thermostat`, with a `ThermostatMode`
+interface and one class for each mode (like `HeatingMode`, `CoolingMode`,
+`EcoMode` and `OffMode`).
+
+**How:** The thermostat will hold onto its current mode object and let that
+object decide the mode-specific stuff, like what `getStatus()` shows and what
+temperature range is allowed. Changing modes just means swapping in a
+different mode object, instead of flipping a flag that every method has to
+check.
+
+**Why:** The thermostat should act differently depending on its mode. Without
+State, every method would need an `if` or `switch` on the current mode. With a
+class per mode, each mode's rules live in one place, and adding a new mode
+doesn't mean touching the existing ones. This isn't implemented yet.
 
 ## OO principles
-_TODO: coding to abstractions, polymorphism, dependency injection._
+
+**Coding to abstractions:** Outside of the factory, the code works with
+interfaces instead of concrete classes. `DeviceFactory` hands back a
+`Switchable` or a `Lockable`, the commands take `Switchable`, `Lockable` and
+`TemperatureAdjustable`, `HomeController`
