@@ -2,10 +2,7 @@ package com.smarthome;
 
 import com.smarthome.command.Command;
 import com.smarthome.command.CommandInvoker;
-import com.smarthome.command.LockCommand;
-import com.smarthome.command.Scene;
 import com.smarthome.command.SetTemperatureCommand;
-import com.smarthome.command.TurnOffCommand;
 import com.smarthome.command.TurnOnCommand;
 import com.smarthome.command.UnlockCommand;
 import com.smarthome.controller.HomeController;
@@ -14,8 +11,6 @@ import com.smarthome.device.Switchable;
 import com.smarthome.device.Thermostat;
 import com.smarthome.factory.DeviceFactory;
 import com.smarthome.observer.ConsoleLogger;
-
-import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
@@ -40,14 +35,9 @@ public class Main {
         printDescriptionAndRun(homeController, new UnlockCommand(frontDoorLock));
         printDescriptionAndRun(homeController, new SetTemperatureCommand(hallwayThermostat, 72));
 
-        Scene goodnightScene = new Scene("Goodnight", List.of(
-                new TurnOffCommand(livingRoomLight),
-                new TurnOffCommand(porchLight),
-                new LockCommand(frontDoorLock),
-                new SetTemperatureCommand(hallwayThermostat, 65)));
-
-        System.out.println();
-        printDescriptionAndRun(homeController, goodnightScene);
+        // Facade: one call runs the whole Goodnight routine across every device.
+        System.out.println("\n> Goodnight");
+        homeController.goodnight();
         System.out.println("\nAfter Goodnight:");
         homeController.printStatus();
 

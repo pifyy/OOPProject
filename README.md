@@ -94,26 +94,42 @@ information. A device can have a logger, a future "save state on change"
 listener and a UI display all subscribed at once, and none of them requires
 changes to the device classes.
 
-### 4. State (planned)
+### 4. Facade
 
-**Where:** We plan to use this for the `Thermostat`, with a `ThermostatMode`
-interface and one class for each mode (like `HeatingMode`, `CoolingMode`,
-`EcoMode` and `OffMode`).
+**Where:** `com.smarthome.controller.HomeController`
 
-**How:** The thermostat will hold onto its current mode object and let that
-object decide the mode-specific stuff, like what `getStatus()` shows and what
-temperature range is allowed. Changing modes just means swapping in a
-different mode object, instead of flipping a flag that every method has to
-check.
+**How:** `HomeController` is the one class `Main` talks to. Behind it are the
+`DeviceFactory`, the `CommandInvoker`, the listeners and every command class,
+but callers never touch those directly. `addLight(...)` builds the device
+through the factory, attaches the listener and keeps track of it, all in one
+call. The routines `goodnight()`, `leaveHome()` and `welcomeHome()` each build a
+`Scene` out of commands for every device in the house and run it through the
+invoker. For example, `goodnight()` turns off every light, locks every door and
+sets every thermostat to 65°F. Because a routine runs as a single scene, one
+`undo()` reverses all of it.
 
-**Why:** The thermostat should act differently depending on its mode. Without
-State, every method would need an `if` or `switch` on the current mode. With a
-class per mode, each mode's rules live in one place, and adding a new mode
-doesn't mean touching the existing ones. This isn't implemented yet.
+**Why:** Without the facade, running "Goodnight" means creating a command for
+each device, putting them in a `Scene` and handing that to the invoker, and
+`Main` would have to know about all of those classes. With the facade it's one
+method call. If the house gets new devices, the routines pick them up
+automatically, and callers don't change.
 
 ## OO principles
 
 **Coding to abstractions:** Outside of the factory, the code works with
 interfaces instead of concrete classes. `DeviceFactory` hands back a
 `Switchable` or a `Lockable`, the commands take `Switchable`, `Lockable` and
-`TemperatureAdjustable`, `HomeController`
+`TemperatureAdjustable`, `HomeController` stores
+devices as `Device`, and `Main` only ever holds interface types.
+
+**Polymorphism:** `printStatus()` loops over every device and calls
+`getStatus()`, and each class answers in its own way (`ON`, `LOCKED`,
+`ON, target 65°F`) with no `instanceof` or `switch`. The same goes for
+`CommandInvoker`, which calls `execute()` and `undo()` without knowing whether it
+has a single command or a whole `Scene`.
+
+**Dependency injection:** `HomeController` gets its `DeviceFactory`,
+`CommandInvoker` and `DeviceListener` through its constructor instead of
+creating them, and `ConsoleLogger` gets the `PrintStream` it writes to. Tests use
+this to pass in a listener that does nothing, or a `PrintStream` they can read
+back.
