@@ -1,6 +1,8 @@
+.gradle/
+build/
 target/
-*.class
 .idea/
 *.iml
+out/
 .vscode/
 .DS_Store

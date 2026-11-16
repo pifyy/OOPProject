@@ -1,18 +1,59 @@
 # SmartHome Simulator
 
 A console app for controlling a simulated smart home: toggle lights, set
-thermostats, lock doors, and run scenes like "Goodnight". House setup is loaded
-from a config file and device state is saved between runs.
+thermostats, lock doors, run routines like "Goodnight", and undo any of it.
 
 **Team:** Pierce Le, Johnny Sainbayar
-**Language:** Java 21 (Maven, JUnit 5)
+**Language:** Java 23 (Gradle, JUnit 5)
 
 ## Build and run
 
+In IntelliJ, open the project folder (it imports as a Gradle project), then run
+`Main` to start the app. To run the tests, right-click `src/test/java` and pick
+**Run 'All Tests'**.
+
+From a terminal:
+
 ```
-mvn test            # run the tests
-mvn compile exec:java
+./gradlew test   # run the tests
+./gradlew run    # start the app
 ```
+
+## Test coverage
+
+To measure coverage in IntelliJ, right-click `src/test/java` and pick
+**More Run/Debug > Run 'All Tests' with Coverage**.
+
+![Test coverage](images/TestCoverage.png)
+
+## Using the app
+
+The app starts with a sample house (two lights, a front door lock and a
+thermostat), shows each device's id and status, then shows a menu:
+
+```
+  1) Show status
+  2) Turn a device on
+  3) Turn a device off
+  4) Lock a door
+  5) Unlock a door
+  6) Set a thermostat
+  7) Goodnight
+  8) Leave home
+  9) Welcome home
+  u) Undo last action
+  q) Quit
+```
+
+Type a choice and press Enter. Options 2 to 6 then ask for a device id, such as
+`light-1`, and option 6 also asks for a temperature (50 to 90°F). Each change is
+logged as it happens, and `u` undoes the last action, including a whole routine
+like Goodnight. Bad input such as an unknown id or a temperature out of range
+prints an error and returns to the menu.
+
+The menu is `com.smarthome.ui.ConsoleMenu`. Each choice maps to a `MenuOption`
+in a map instead of a `switch`, and every option goes through the
+`HomeController` facade.
 
 ## Design patterns
 
@@ -31,8 +72,7 @@ program asks the factory for devices and never calls `new Light(...)` or
 new device type, or changing how one is built, touches a single class.
 `DeviceFactory` is a normal object rather than a set of static methods, so it
 can be passed into `HomeController` through the constructor (dependency
-injection) and replaced in tests. Later in the project, the config loader will
-use the factory to build the house from the setup file.
+injection) and replaced in tests.
 
 ### 2. Command
 
@@ -90,19 +130,21 @@ listeners only hear about real changes. Because the subject logic lives in
 `AbstractDevice`, every device supports listeners without repeating that code.
 
 **Why:** Devices don't know who is listening or what listeners do with the
-information. A device can have a logger, a future "save state on change"
-listener and a UI display all subscribed at once, and none of them requires
-changes to the device classes.
+information. A device could have the logger, a sound alert and a status
+display all subscribed at once, and none of them would require changes to the
+device classes.
 
 ### 4. Facade
 
 **Where:** `com.smarthome.controller.HomeController`
 
-**How:** `HomeController` is the one class `Main` talks to. Behind it are the
+**How:** `HomeController` is the one class `Main` and the console menu talk to. Behind it are the
 `DeviceFactory`, the `CommandInvoker`, the listeners and every command class,
 but callers never touch those directly. `addLight(...)` builds the device
 through the factory, attaches the listener and keeps track of it, all in one
-call. The routines `goodnight()`, `leaveHome()` and `welcomeHome()` each build a
+call. Single actions take just a device id: `turnOn("light-1")` finds the
+device, wraps the action in the right command and runs it through the invoker,
+so it can be undone. The routines `goodnight()`, `leaveHome()` and `welcomeHome()` each build a
 `Scene` out of commands for every device in the house and run it through the
 invoker. For example, `goodnight()` turns off every light, locks every door and
 sets every thermostat to 65°F. Because a routine runs as a single scene, one

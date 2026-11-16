@@ -7,6 +7,7 @@ import com.smarthome.command.Scene;
 import com.smarthome.command.SetTemperatureCommand;
 import com.smarthome.command.TurnOffCommand;
 import com.smarthome.command.TurnOnCommand;
+import com.smarthome.command.UnlockCommand;
 import com.smarthome.device.Device;
 import com.smarthome.device.Lockable;
 import com.smarthome.device.Switchable;
@@ -23,8 +24,9 @@ import java.util.Objects;
 
 /**
  * Facade pattern: the one simple entry point to the smart home. Callers use
- * one-call routines like goodnight() and never deal with the factory, the
- * individual commands, scenes, the invoker or the listeners behind them.
+ * one-call methods like turnOn("light-1") or goodnight() and never deal with
+ * the factory, the individual commands, scenes, the invoker or the listeners
+ * behind them.
  */
 public class HomeController {
     public static final int GOODNIGHT_TEMPERATURE = 65;
@@ -34,9 +36,9 @@ public class HomeController {
     private final CommandInvoker commandInvoker;
     private final DeviceListener deviceChangeListener;
     private final Map<String, Device> devicesById = new LinkedHashMap<>();
-    private final List<Switchable> lights = new ArrayList<>();
-    private final List<Lockable> locks = new ArrayList<>();
-    private final List<Thermostat> thermostats = new ArrayList<>();
+    private final Map<String, Switchable> lightsById = new LinkedHashMap<>();
+    private final Map<String, Lockable> locksById = new LinkedHashMap<>();
+    private final Map<String, Thermostat> thermostatsById = new LinkedHashMap<>();
 
     public HomeController(DeviceFactory deviceFactory, CommandInvoker commandInvoker,
                           DeviceListener deviceChangeListener) {
@@ -47,20 +49,20 @@ public class HomeController {
 
     public Switchable addLight(String lightId, String lightName) {
         Switchable newLight = registerDeviceAndAttachListener(deviceFactory.createLight(lightId, lightName));
-        lights.add(newLight);
+        lightsById.put(lightId, newLight);
         return newLight;
     }
 
     public Lockable addLock(String lockId, String lockName) {
         Lockable newLock = registerDeviceAndAttachListener(deviceFactory.createLock(lockId, lockName));
-        locks.add(newLock);
+        locksById.put(lockId, newLock);
         return newLock;
     }
 
     public Thermostat addThermostat(String thermostatId, String thermostatName) {
         Thermostat newThermostat = registerDeviceAndAttachListener(
                 deviceFactory.createThermostat(thermostatId, thermostatName));
-        thermostats.add(newThermostat);
+        thermostatsById.put(thermostatId, newThermostat);
         return newThermostat;
     }
 
@@ -82,16 +84,36 @@ public class HomeController {
         return undoneCommand != null;
     }
 
+    public void turnOn(String deviceId) {
+        run(new TurnOnCommand(findSwitchable(deviceId)));
+    }
+
+    public void turnOff(String deviceId) {
+        run(new TurnOffCommand(findSwitchable(deviceId)));
+    }
+
+    public void lock(String lockId) {
+        run(new LockCommand(findLock(lockId)));
+    }
+
+    public void unlock(String lockId) {
+        run(new UnlockCommand(findLock(lockId)));
+    }
+
+    public void setTemperature(String thermostatId, int degrees) {
+        run(new SetTemperatureCommand(findThermostat(thermostatId), degrees));
+    }
+
     /** Lights off, doors locked, thermostats down to GOODNIGHT_TEMPERATURE. */
     public void goodnight() {
         List<Command> goodnightCommands = new ArrayList<>();
-        for (Switchable light : lights) {
+        for (Switchable light : lightsById.values()) {
             goodnightCommands.add(new TurnOffCommand(light));
         }
-        for (Lockable lock : locks) {
+        for (Lockable lock : locksById.values()) {
             goodnightCommands.add(new LockCommand(lock));
         }
-        for (Thermostat thermostat : thermostats) {
+        for (Thermostat thermostat : thermostatsById.values()) {
             goodnightCommands.add(new SetTemperatureCommand(thermostat, GOODNIGHT_TEMPERATURE));
         }
         run(new Scene("Goodnight", goodnightCommands));
@@ -100,13 +122,13 @@ public class HomeController {
     /** Lights off, doors locked, thermostats off to save energy. */
     public void leaveHome() {
         List<Command> leaveHomeCommands = new ArrayList<>();
-        for (Switchable light : lights) {
+        for (Switchable light : lightsById.values()) {
             leaveHomeCommands.add(new TurnOffCommand(light));
         }
-        for (Lockable lock : locks) {
+        for (Lockable lock : locksById.values()) {
             leaveHomeCommands.add(new LockCommand(lock));
         }
-        for (Thermostat thermostat : thermostats) {
+        for (Thermostat thermostat : thermostatsById.values()) {
             leaveHomeCommands.add(new TurnOffCommand(thermostat));
         }
         run(new Scene("Leave Home", leaveHomeCommands));
@@ -115,14 +137,39 @@ public class HomeController {
     /** Lights on, thermostats on and set to WELCOME_HOME_TEMPERATURE. Doors stay as they are. */
     public void welcomeHome() {
         List<Command> welcomeHomeCommands = new ArrayList<>();
-        for (Switchable light : lights) {
+        for (Switchable light : lightsById.values()) {
             welcomeHomeCommands.add(new TurnOnCommand(light));
         }
-        for (Thermostat thermostat : thermostats) {
+        for (Thermostat thermostat : thermostatsById.values()) {
             welcomeHomeCommands.add(new TurnOnCommand(thermostat));
             welcomeHomeCommands.add(new SetTemperatureCommand(thermostat, WELCOME_HOME_TEMPERATURE));
         }
         run(new Scene("Welcome Home", welcomeHomeCommands));
+    }
+
+    /** Lights and thermostats can both be switched on and off. */
+    private Switchable findSwitchable(String deviceId) {
+        Switchable light = lightsById.get(deviceId);
+        if (light != null) {
+            return light;
+        }
+        return findIn(thermostatsById, deviceId, "light or thermostat");
+    }
+
+    private Lockable findLock(String lockId) {
+        return findIn(locksById, lockId, "lock");
+    }
+
+    private Thermostat findThermostat(String thermostatId) {
+        return findIn(thermostatsById, thermostatId, "thermostat");
+    }
+
+    private static <T> T findIn(Map<String, T> devicesOfOneKind, String deviceId, String kindName) {
+        T device = devicesOfOneKind.get(deviceId);
+        if (device == null) {
+            throw new IllegalArgumentException("No " + kindName + " with id '" + deviceId + "'");
+        }
+        return device;
     }
 
     public Device getDeviceById(String deviceId) {
